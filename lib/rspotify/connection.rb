@@ -2,6 +2,7 @@ require 'addressable'
 require 'base64'
 require 'json'
 require 'restclient'
+require 'retries'
 
 module RSpotify
   class MissingAuthentication < StandardError; end
@@ -54,6 +55,18 @@ module RSpotify
 
     private
 
+    def retry_handler
+      proc do |exception, attempt_number, total_delay|
+        if e.response.headers[:retry_after].present?
+          # We were a bit too eager and spotify is telling us to back off.
+          # They'll give us a mininum amount of time to wait. We'll do that here,
+          # and the retry library will add any additional backoff.
+          sleep_time = (e.response.headers[:retry_after]).to_i.seconds
+          sleep(sleep_time)
+        end
+      end
+    end
+
     def send_request(verb, path, *params)
       url = path.start_with?('http') ? path : API_URI + path
       url, query = *url.split('?')
@@ -63,7 +76,7 @@ module RSpotify
       begin
         headers = get_headers(params)
         headers['Accept-Language'] = ENV['ACCEPT_LANGUAGE'] if ENV['ACCEPT_LANGUAGE']
-        response = RestClient.send(verb, url, *params)
+        response = Retries.run(max_tries: 3, handler: retry_handler, rescue: RestClient::TooManyRequests) { RestClient.send(verb, url, *params) }
       rescue RestClient::Unauthorized => e
         raise e if request_was_user_authenticated?(*params)
 
