@@ -57,11 +57,11 @@ module RSpotify
 
     def retry_handler
       proc do |exception, attempt_number, total_delay|
-        if e.response.headers[:retry_after].present?
+        if exception.response.headers[:retry_after].present?
           # We were a bit too eager and spotify is telling us to back off.
           # They'll give us a mininum amount of time to wait. We'll do that here,
           # and the retry library will add any additional backoff.
-          sleep_time = (e.response.headers[:retry_after]).to_i.seconds
+          sleep_time = (exception.response.headers[:retry_after]).to_i.seconds
           sleep(sleep_time)
         end
       end
